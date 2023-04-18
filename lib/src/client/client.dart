@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:amazon_cognito_identity_dart_2/sig_v4.dart';
 import 'package:built_value/serializer.dart';
@@ -58,8 +57,11 @@ class AwsS3Client {
     return _parseListObjectResponse(response.body);
   }
 
-  Future<Response> getObject(String key) {
-    return _doSignedGetRequest(key: key);
+  Future<Response> getObject(String key, {Map<String, String>? headers}) {
+    return _doSignedGetRequest(
+      key: key,
+      headers: headers,
+    );
   }
 
   Future<Response> headObject(String key) {
@@ -87,10 +89,9 @@ ${'/$unencodedPath'.split('/').map(Uri.encodeComponent).join('/')}
 $canonicalQuery
 host:$_host
 x-amz-content-sha256:$payload
-x-amz-date:$datetime
-x-amz-security-token:${_sessionToken ?? ""}
+x-amz-date:$datetime${_sessionToken != null ? ("\nx-amz-security-token:${_sessionToken}") : ""}
 
-host;x-amz-content-sha256;x-amz-date;x-amz-security-token
+host;x-amz-content-sha256;x-amz-date${_sessionToken != null ? ";x-amz-security-token" : ""}
 $payload''';
 
     final stringToSign = SigV4.buildStringToSign(datetime, credentialScope,
@@ -101,7 +102,7 @@ $payload''';
 
     final authorization = [
       'AWS4-HMAC-SHA256 Credential=$_accessKey/$credentialScope',
-      'SignedHeaders=host;x-amz-content-sha256;x-amz-date;x-amz-security-token',
+      'SignedHeaders=host;x-amz-content-sha256;x-amz-date${_sessionToken != null ? ";x-amz-security-token" : ""}',
       'Signature=$signature',
     ].join(',');
 
@@ -115,10 +116,12 @@ $payload''';
   Future<Response> _doSignedGetRequest({
     required String key,
     Map<String, String>? queryParams,
+    Map<String, String>? headers,
   }) async {
     final SignedRequestParams params =
         buildSignedGetParams(key: key, queryParams: queryParams);
-    return _client.get(params.uri, headers: params.headers);
+    return _client
+        .get(params.uri, headers: {...params.headers, ...(headers ?? {})});
   }
 
   Future<Response> _doSignedHeadRequest({
